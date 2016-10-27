@@ -1,36 +1,6 @@
 #include "blas.h"
 #include "math.h"
 #include <assert.h>
-#include <float.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-void reorg(float *x, int size, int layers, int batch, int forward)
-{
-    float *swap = calloc(size*layers*batch, sizeof(float));
-    int i,c,b;
-    for(b = 0; b < batch; ++b){
-        for(c = 0; c < layers; ++c){
-            for(i = 0; i < size; ++i){
-                int i1 = b*layers*size + c*size + i;
-                int i2 = b*layers*size + i*layers + c;
-                if (forward) swap[i2] = x[i1];
-                else swap[i1] = x[i2];
-            }
-        }
-    }
-    memcpy(x, swap, size*layers*batch*sizeof(float));
-    free(swap);
-}
-
-void weighted_sum_cpu(float *a, float *b, float *s, int n, float *c)
-{
-    int i;
-    for(i = 0; i < n; ++i){
-        c[i] = s[i]*a[i] + (1-s[i])*(b ? b[i] : 0);
-    }
-}
 
 void shortcut_cpu(int batch, int w1, int h1, int c1, float *add, int w2, int h2, int c2, float *out)
 {
@@ -76,7 +46,7 @@ void mean_cpu(float *x, int batch, int filters, int spatial, float *mean)
 
 void variance_cpu(float *x, float *mean, int batch, int filters, int spatial, float *variance)
 {
-    float scale = 1./(batch * spatial - 1);
+    float scale = 1./(batch * spatial);
     int i,j,k;
     for(i = 0; i < filters; ++i){
         variance[i] = 0;
@@ -97,7 +67,7 @@ void normalize_cpu(float *x, float *mean, float *variance, int batch, int filter
         for(f = 0; f < filters; ++f){
             for(i = 0; i < spatial; ++i){
                 int index = b*filters*spatial + f*spatial + i;
-                x[index] = (x[index] - mean[f])/(sqrt(variance[f]) + .000001f);
+                x[index] = (x[index] - mean[f])/(sqrt(variance[f]) + .00001f);
             }
         }
     }
@@ -145,30 +115,13 @@ void copy_cpu(int N, float *X, int INCX, float *Y, int INCY)
     for(i = 0; i < N; ++i) Y[i*INCY] = X[i*INCX];
 }
 
-void smooth_l1_cpu(int n, float *pred, float *truth, float *delta, float *error)
+void smooth_l1_cpu(int n, float *pred, float *truth, float *delta)
 {
     int i;
     for(i = 0; i < n; ++i){
         float diff = truth[i] - pred[i];
-        float abs_val = fabs(diff);
-        if(abs_val < 1) {
-            error[i] = diff * diff;
-            delta[i] = diff;
-        }
-        else {
-            error[i] = 2*abs_val - 1;
-            delta[i] = (diff < 0) ? -1 : 1;
-        }
-    }
-}
-
-void l2_cpu(int n, float *pred, float *truth, float *delta, float *error)
-{
-    int i;
-    for(i = 0; i < n; ++i){
-        float diff = truth[i] - pred[i];
-        error[i] = diff * diff;
-        delta[i] = diff;
+        if(fabs(diff) > 1) delta[i] = diff;
+        else delta[i] = (diff > 0) ? 1 : -1;
     }
 }
 
@@ -178,23 +131,5 @@ float dot_cpu(int N, float *X, int INCX, float *Y, int INCY)
     float dot = 0;
     for(i = 0; i < N; ++i) dot += X[i*INCX] * Y[i*INCY];
     return dot;
-}
-
-void softmax(float *input, int n, float temp, float *output)
-{
-    int i;
-    float sum = 0;
-    float largest = -FLT_MAX;
-    for(i = 0; i < n; ++i){
-        if(input[i] > largest) largest = input[i];
-    }
-    for(i = 0; i < n; ++i){
-        sum += exp(input[i]/temp-largest/temp);
-    }
-    if(sum) sum = largest/temp+log(sum);
-    else sum = largest-100;
-    for(i = 0; i < n; ++i){
-        output[i] = exp(input[i]/temp-sum);
-    }
 }
 

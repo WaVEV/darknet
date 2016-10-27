@@ -5,14 +5,12 @@
 #include "image.h"
 #include "layer.h"
 #include "data.h"
-#include "tree.h"
 
 typedef enum {
-    CONSTANT, STEP, EXP, POLY, STEPS, SIG, RANDOM
+    CONSTANT, STEP, EXP, POLY, STEPS, SIG
 } learning_rate_policy;
 
 typedef struct network{
-    float *workspace;
     int n;
     int batch;
     int *seen;
@@ -35,25 +33,9 @@ typedef struct network{
     float *scales;
     int   *steps;
     int num_steps;
-    int burn_in;
-
-    int adam;
-    float B1;
-    float B2;
-    float eps;
 
     int inputs;
     int h, w, c;
-    int max_crop;
-    int min_crop;
-    float angle;
-    float aspect;
-    float exposure;
-    float saturation;
-    float hue;
-
-    int gpu_index;
-    tree *hierarchy;
 
     #ifdef GPU
     float **input_gpu;
@@ -65,15 +47,12 @@ typedef struct network_state {
     float *truth;
     float *input;
     float *delta;
-    float *workspace;
     int train;
     int index;
     network net;
 } network_state;
 
 #ifdef GPU
-float train_networks(network *nets, int n, data d, int interval);
-void sync_nets(network *nets, int n, int interval);
 float train_network_datum_gpu(network net, float *x, float *y);
 float *network_predict_gpu(network net, float *input);
 float * get_network_output_gpu_layer(network net, int i);
@@ -84,6 +63,9 @@ void backward_network_gpu(network net, network_state state);
 void update_network_gpu(network net);
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 float get_current_rate(network net);
 int get_current_batch(network net);
 void free_network(network net);
@@ -125,5 +107,9 @@ float get_network_cost(network net);
 int get_network_nuisance(network net);
 int get_network_background(network net);
 
+layer get_network_detection_layer(network net);
+#ifdef __cplusplus
+}
+#endif
 #endif
 

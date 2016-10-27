@@ -1,4 +1,4 @@
-#include "detection_layer.h"
+#include "region_layer.h"
 #include "activations.h"
 #include "softmax_layer.h"
 #include "blas.h"
@@ -10,10 +10,10 @@
 #include <string.h>
 #include <stdlib.h>
 
-detection_layer make_detection_layer(int batch, int inputs, int n, int side, int classes, int coords, int rescore)
+region_layer make_region_layer(int batch, int inputs, int n, int side, int classes, int coords, int rescore)
 {
-    detection_layer l = {0};
-    l.type = DETECTION;
+    region_layer l = {0};
+    l.type = REGION;
 
     l.n = n;
     l.batch = batch;
@@ -33,13 +33,13 @@ detection_layer make_detection_layer(int batch, int inputs, int n, int side, int
     l.delta_gpu = cuda_make_array(l.delta, batch*l.outputs);
 #endif
 
-    fprintf(stderr, "Detection Layer\n");
+    fprintf(stderr, "Region Layer\n");
     srand(0);
 
     return l;
 }
 
-void forward_detection_layer(const detection_layer l, network_state state)
+void forward_region_layer(const region_layer l, network_state state)
 {
     int locations = l.side*l.side;
     int i,j;
@@ -50,13 +50,14 @@ void forward_detection_layer(const detection_layer l, network_state state)
             int index = b*l.inputs;
             for (i = 0; i < locations; ++i) {
                 int offset = i*l.classes;
-                softmax_array(l.output + index + offset, l.classes, 1,
+                softmax_array(l.output + index + offset, l.classes,
                         l.output + index + offset);
             }
             int offset = locations*l.classes;
             activate_array(l.output + index + offset, locations*l.n*(1+l.coords), LOGISTIC);
         }
     }
+
     if(state.train){
         float avg_iou = 0;
         float avg_cat = 0;
@@ -81,11 +82,9 @@ void forward_detection_layer(const detection_layer l, network_state state)
 
                 int best_index = -1;
                 float best_iou = 0;
-                float best_rmse = 20;
+                float best_rmse = 4;
 
-                if (!is_obj){
-                    continue;
-                }
+                if (!is_obj) continue;
 
                 int class_index = index + i*l.classes;
                 for(j = 0; j < l.classes; ++j) {
@@ -111,7 +110,6 @@ void forward_detection_layer(const detection_layer l, network_state state)
                     }
 
                     float iou  = box_iou(out, truth);
-                    //iou = 0;
                     float rmse = box_rmse(out, truth);
                     if(best_iou > 0 || iou > 0){
                         if(iou > best_iou){
@@ -125,38 +123,18 @@ void forward_detection_layer(const detection_layer l, network_state state)
                         }
                     }
                 }
-
-                if(l.forced){
-                    if(truth.w*truth.h < .1){
-                        best_index = 1;
-                    }else{
-                        best_index = 0;
-                    }
-                }
-
-                int box_index = index + locations*(l.classes + l.n) + (i*l.n + best_index) * l.coords;
-                int tbox_index = truth_index + 1 + l.classes;
-
-                box out = float_to_box(l.output + box_index);
-                out.x /= l.side;
-                out.y /= l.side;
-                if (l.sqrt) {
-                    out.w = out.w*out.w;
-                    out.h = out.h*out.h;
-                }
-                float iou  = box_iou(out, truth);
-
-                //printf("%d,", best_index);
                 int p_index = index + locations*l.classes + i*l.n + best_index;
                 *(l.cost) -= l.noobject_scale * pow(l.output[p_index], 2);
                 *(l.cost) += l.object_scale * pow(1-l.output[p_index], 2);
                 avg_obj += l.output[p_index];
-                l.delta[p_index] = l.object_scale * (1.-l.output[p_index]);
+                l.delta[p_index+0] = l.object_scale * (1.-l.output[p_index]);
 
                 if(l.rescore){
-                    l.delta[p_index] = l.object_scale * (iou - l.output[p_index]);
+                    l.delta[p_index+0] = l.object_scale * (best_iou - l.output[p_index]);
                 }
 
+                int box_index = index + locations*(l.classes + l.n) + (i*l.n + best_index) * l.coords;
+                int tbox_index = truth_index + 1 + l.classes;
                 l.delta[box_index+0] = l.coord_scale*(state.truth[tbox_index + 0] - l.output[box_index + 0]);
                 l.delta[box_index+1] = l.coord_scale*(state.truth[tbox_index + 1] - l.output[box_index + 1]);
                 l.delta[box_index+2] = l.coord_scale*(state.truth[tbox_index + 2] - l.output[box_index + 2]);
@@ -166,8 +144,8 @@ void forward_detection_layer(const detection_layer l, network_state state)
                     l.delta[box_index+3] = l.coord_scale*(sqrt(state.truth[tbox_index + 3]) - l.output[box_index + 3]);
                 }
 
-                *(l.cost) += pow(1-iou, 2);
-                avg_iou += iou;
+                *(l.cost) += pow(1-best_iou, 2);
+                avg_iou += best_iou;
                 ++count;
             }
             if(l.softmax){
@@ -175,24 +153,19 @@ void forward_detection_layer(const detection_layer l, network_state state)
                         LOGISTIC, l.delta + index + locations*l.classes);
             }
         }
-        printf("Detection Avg IOU: %f, Pos Cat: %f, All Cat: %f, Pos Obj: %f, Any Obj: %f, count: %d\n", avg_iou/count, avg_cat/count, avg_allcat/(count*l.classes), avg_obj/count, avg_anyobj/(l.batch*locations*l.n), count);
+        printf("Region Avg IOU: %f, Pos Cat: %f, All Cat: %f, Pos Obj: %f, Any Obj: %f, count: %d\n", avg_iou/count, avg_cat/count, avg_allcat/(count*l.classes), avg_obj/count, avg_anyobj/(l.batch*locations*l.n), count);
     }
 }
 
-void backward_detection_layer(const detection_layer l, network_state state)
+void backward_region_layer(const region_layer l, network_state state)
 {
     axpy_cpu(l.batch*l.inputs, 1, l.delta, 1, state.delta, 1);
 }
 
 #ifdef GPU
 
-void forward_detection_layer_gpu(const detection_layer l, network_state state)
+void forward_region_layer_gpu(const region_layer l, network_state state)
 {
-    if(!state.train){
-        copy_ongpu(l.batch*l.inputs, state.input, 1, l.output_gpu, 1);
-        return;
-    }
-
     float *in_cpu = calloc(l.batch*l.inputs, sizeof(float));
     float *truth_cpu = 0;
     if(state.truth){
@@ -205,14 +178,14 @@ void forward_detection_layer_gpu(const detection_layer l, network_state state)
     cpu_state.train = state.train;
     cpu_state.truth = truth_cpu;
     cpu_state.input = in_cpu;
-    forward_detection_layer(l, cpu_state);
+    forward_region_layer(l, cpu_state);
     cuda_push_array(l.output_gpu, l.output, l.batch*l.outputs);
     cuda_push_array(l.delta_gpu, l.delta, l.batch*l.inputs);
     free(cpu_state.input);
     if(cpu_state.truth) free(cpu_state.truth);
 }
 
-void backward_detection_layer_gpu(detection_layer l, network_state state)
+void backward_region_layer_gpu(region_layer l, network_state state)
 {
     axpy_ongpu(l.batch*l.inputs, 1, l.delta_gpu, 1, state.delta, 1);
     //copy_ongpu(l.batch*l.inputs, l.delta_gpu, 1, state.delta, 1);

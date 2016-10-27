@@ -41,17 +41,9 @@ cost_layer make_cost_layer(int batch, int inputs, COST_TYPE cost_type, float sca
     l.outputs = inputs;
     l.cost_type = cost_type;
     l.delta = calloc(inputs*batch, sizeof(float));
-    l.output = calloc(inputs*batch, sizeof(float));
-    l.cost = calloc(1, sizeof(float));
-
-    l.forward = forward_cost_layer;
-    l.backward = backward_cost_layer;
+    l.output = calloc(1, sizeof(float));
     #ifdef GPU
-    l.forward_gpu = forward_cost_layer_gpu;
-    l.backward_gpu = backward_cost_layer_gpu;
-
-    l.delta_gpu = cuda_make_array(l.output, inputs*batch);
-    l.output_gpu = cuda_make_array(l.delta, inputs*batch);
+    l.delta_gpu = cuda_make_array(l.delta, inputs*batch);
     #endif
     return l;
 }
@@ -61,12 +53,9 @@ void resize_cost_layer(cost_layer *l, int inputs)
     l->inputs = inputs;
     l->outputs = inputs;
     l->delta = realloc(l->delta, inputs*l->batch*sizeof(float));
-    l->output = realloc(l->output, inputs*l->batch*sizeof(float));
 #ifdef GPU
     cuda_free(l->delta_gpu);
-    cuda_free(l->output_gpu);
     l->delta_gpu = cuda_make_array(l->delta, inputs*l->batch);
-    l->output_gpu = cuda_make_array(l->output, inputs*l->batch);
 #endif
 }
 
@@ -80,11 +69,13 @@ void forward_cost_layer(cost_layer l, network_state state)
         }
     }
     if(l.cost_type == SMOOTH){
-        smooth_l1_cpu(l.batch*l.inputs, state.input, state.truth, l.delta, l.output);
+        smooth_l1_cpu(l.batch*l.inputs, state.input, state.truth, l.delta);
     } else {
-        l2_cpu(l.batch*l.inputs, state.input, state.truth, l.delta, l.output);
+        copy_cpu(l.batch*l.inputs, state.truth, 1, l.delta, 1);
+        axpy_cpu(l.batch*l.inputs, -1, state.input, 1, l.delta, 1);
     }
-    l.cost[0] = sum_array(l.output, l.batch*l.inputs);
+    *(l.output) = dot_cpu(l.batch*l.inputs, l.delta, 1, l.delta, 1);
+    //printf("cost: %f\n", *l.output);
 }
 
 void backward_cost_layer(const cost_layer l, network_state state)
@@ -104,15 +95,6 @@ void push_cost_layer(cost_layer l)
     cuda_push_array(l.delta_gpu, l.delta, l.batch*l.inputs);
 }
 
-int float_abs_compare (const void * a, const void * b)
-{
-    float fa = *(const float*) a;
-    if(fa < 0) fa = -fa;
-    float fb = *(const float*) b;
-    if(fb < 0) fb = -fb;
-    return (fa > fb) - (fa < fb);
-}
-
 void forward_cost_layer_gpu(cost_layer l, network_state state)
 {
     if (!state.truth) return;
@@ -121,23 +103,14 @@ void forward_cost_layer_gpu(cost_layer l, network_state state)
     }
 
     if(l.cost_type == SMOOTH){
-        smooth_l1_gpu(l.batch*l.inputs, state.input, state.truth, l.delta_gpu, l.output_gpu);
+        smooth_l1_gpu(l.batch*l.inputs, state.input, state.truth, l.delta_gpu);
     } else {
-        l2_gpu(l.batch*l.inputs, state.input, state.truth, l.delta_gpu, l.output_gpu);
+        copy_ongpu(l.batch*l.inputs, state.truth, 1, l.delta_gpu, 1);
+        axpy_ongpu(l.batch*l.inputs, -1, state.input, 1, l.delta_gpu, 1);
     }
 
-    if(l.ratio){
-        cuda_pull_array(l.delta_gpu, l.delta, l.batch*l.inputs);
-        qsort(l.delta, l.batch*l.inputs, sizeof(float), float_abs_compare);
-        int n = (1-l.ratio) * l.batch*l.inputs;
-        float thresh = l.delta[n];
-        thresh = 0;
-        printf("%f\n", thresh);
-        supp_ongpu(l.batch*l.inputs, thresh, l.delta_gpu, 1);
-    }
-
-    cuda_pull_array(l.output_gpu, l.output, l.batch*l.inputs);
-    l.cost[0] = sum_array(l.output, l.batch*l.inputs);
+    cuda_pull_array(l.delta_gpu, l.delta, l.batch*l.inputs);
+    *(l.output) = dot_cpu(l.batch*l.inputs, l.delta, 1, l.delta, 1);
 }
 
 void backward_cost_layer_gpu(const cost_layer l, network_state state)
