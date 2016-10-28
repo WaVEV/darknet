@@ -23,6 +23,7 @@ string voc_class_names[] = {"aeroplane", "bicycle", "bird", "boat", "bottle", "b
 
 #define WIDTH_IMAGE 448
 #define HEIGHT_IMAGE 448
+#define CLASSES_CLASSES_NUM 20
 
 float buff_img[WIDTH_IMAGE * HEIGHT_IMAGE * 3];
 
@@ -167,7 +168,7 @@ public:
 
         convert_yolo_detections(predictions, layer.classes, layer.n, layer.sqrt, layer.side, 1, 1, thresh, probs, boxes, 1);
         if (nms) do_nms_sort(boxes, probs, layer.side*layer.side*layer.n, layer.classes, nms);
-        draw_detections_bbox(im, layer.side*layer.side*layer.n, thresh, boxes, probs, voc_class_names, 0, 20, bboxes);
+        draw_detections_bbox(im, layer.side*layer.side*layer.n, thresh, boxes, probs, voc_class_names, 0, CLASSES_CLASSES_NUM, bboxes);
 
         for (int i = 0; i < bboxes.size(); i++)
         {
@@ -194,7 +195,7 @@ private:
         int objectness, float thresh,
         int im_width, int im_height)
     {
-        int classes = 20;
+        int classes = CLASSES_CLASSES_NUM;
         int elems = 4 + classes + objectness;
         int j;
         int r, c;
