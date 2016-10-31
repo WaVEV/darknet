@@ -44,15 +44,6 @@ void draw_detections_bbox(image im, int num, float thresh, box *boxes, float **p
         int classs = max_index(probs[i], classes);
         float prob = probs[i][classs];
         if (prob > thresh){
-            int width = pow(prob, 1. / 2.) * 10 + 1;
-            int offset = classs * 17 % classes;
-            float red = get_color(0, offset, classes);
-            float green = get_color(1, offset, classes);
-            float blue = get_color(2, offset, classes);
-            float rgb[3];
-            rgb[0] = red;
-            rgb[1] = green;
-            rgb[2] = blue;
             box b = boxes[i];
 
             int left = (b.x - b.w / 2.)*im.w;
@@ -65,13 +56,10 @@ void draw_detections_bbox(image im, int num, float thresh, box *boxes, float **p
             if (top < 0) top = 0;
             if (bot > im.h - 1) bot = im.h - 1;
 
-            //printf("%s: %.2f, %d, %d, %d, %d\n", names[classs].c_str(), prob, left, right, top, bot);
             _BBox bs;
             bs.left = left; bs.right = right; bs.top = top; bs.bottom = bot; bs.confidence = prob; bs.cls = classs;
             bb.push_back(bs);
 
-            draw_box_width(im, left, top, right, bot, width, red, green, blue);
-            if (labels) draw_label(im, top + width, left, labels[classs], rgb);
         }
     }
 }
