@@ -34,7 +34,7 @@ def detect(im):
     scale_x = im.shape[1] / 448.0;
     print dets
     for bb in dets:
-        print bb.confidence
+        print bb.confidence, bb.cls
         if bb.confidence > 0.4:
             bboxs.append(map(int, [bb.left * scale_x, bb.top * scale_y, bb.right * scale_x, bb.bottom * scale_y]))
     return bboxs
@@ -42,9 +42,26 @@ def detect(im):
 im = cv2.imread(sys.argv[1])
 bboxs = detect(im)
 dest_path = "salida.jpg"
-for bb in bboxs:
-    cv2.rectangle(im, (bb[0], bb[1]), (bb[2], bb[3]), (0,255,0))
 
-cv2.imwrite(dest_path, im)
+max_area = -1
+max_bbox = None
+for bb in bboxs:
+    area = (bb[2] - bb[0]) * (bb[3] - bb[1])
+    if max_area < area:
+        max_area = area
+        max_bbox = bb
+
+
+for bb in bboxs:
+    area = (bb[2] - bb[0]) * (bb[3] - bb[1])
+    if max_area == area:
+        cv2.rectangle(im, (bb[0], bb[1]), (bb[2], bb[3]), (0,0,255))
+    else:
+        cv2.rectangle(im, (bb[0], bb[1]), (bb[2], bb[3]), (0,255,0))
+
+bb = max_bbox
+
+cv2.imwrite("paint.jpg", im)
+cv2.imwrite(dest_path, im[bb[1]:bb[3], bb[0]:bb[2]])
 
 

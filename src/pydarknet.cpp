@@ -154,7 +154,7 @@ public:
         float *predictions = network_predict(net, X);
         float nms = .5f;
 
-        convert_yolo_detections(predictions, layer.classes, layer.n, layer.sqrt, layer.side, 1, 1, thresh, probs, boxes, 1);
+        convert_yolo_detections(predictions, layer.classes, layer.n, layer.sqrt, layer.side, 1, 1, thresh, probs, boxes, 0);
         if (nms) do_nms_sort(boxes, probs, layer.side*layer.side*layer.n, layer.classes, nms);
         draw_detections_bbox(im, layer.side*layer.side*layer.n, thresh, boxes, probs, voc_class_names, 0, CLASSES_CLASSES_NUM, bboxes);
 
