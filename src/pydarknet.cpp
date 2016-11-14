@@ -19,11 +19,9 @@
 using namespace std;
 namespace bp = boost::python;
 
-string voc_class_names[] = {"aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"};
-
 #define WIDTH_IMAGE 448
 #define HEIGHT_IMAGE 448
-#define CLASSES_CLASSES_NUM 20
+
 
 float buff_img[WIDTH_IMAGE * HEIGHT_IMAGE * 3];
 
@@ -36,7 +34,7 @@ typedef struct BBox{
     int cls;
 } _BBox;
 
-void draw_detections_bbox(image im, int num, float thresh, box *boxes, float **probs, string* names, image *labels, int classes, vector<_BBox> &bb)
+void draw_detections_bbox(image im, int num, float thresh, box *boxes, float **probs, int classes, vector<_BBox> &bb)
 {
     int i;
 
@@ -112,6 +110,7 @@ public:
         set_batch_network(&net, 1); srand(2222222);
 
         thresh = 0.2;
+        num_classes = layer.classes;
         boxes = (box *)calloc(layer.side*layer.side*layer.n, sizeof(box));
         probs = (float **)calloc(layer.side*layer.side*layer.n, sizeof(float *));
         for (int j = 0; j < layer.side*layer.side*layer.n; j++)
@@ -156,7 +155,7 @@ public:
 
         convert_yolo_detections(predictions, layer.classes, layer.n, layer.sqrt, layer.side, 1, 1, thresh, probs, boxes, 0);
         if (nms) do_nms_sort(boxes, probs, layer.side*layer.side*layer.n, layer.classes, nms);
-        draw_detections_bbox(im, layer.side*layer.side*layer.n, thresh, boxes, probs, voc_class_names, 0, CLASSES_CLASSES_NUM, bboxes);
+        draw_detections_bbox(im, layer.side*layer.side*layer.n, thresh, boxes, probs, num_classes, bboxes);
 
         for (int i = 0; i < bboxes.size(); i++)
         {
@@ -181,9 +180,9 @@ private:
 
     bp::list parse_yolo_detection(float *box, int side,
         int objectness, float thresh,
-        int im_width, int im_height)
+        int im_width, int im_height, int num_classes)
     {
-        int classes = CLASSES_CLASSES_NUM;
+        int classes = num_classes;
         int elems = 4 + classes + objectness;
         int j;
         int r, c;
@@ -230,6 +229,7 @@ private:
     float thresh;
     box *boxes;
     float **probs;
+    int num_classes;
 };
 
 BOOST_PYTHON_MODULE(libpydarknet)
@@ -247,4 +247,3 @@ BOOST_PYTHON_MODULE(libpydarknet)
         .def_readonly("confidence", &BBox::confidence)
         .def_readonly("cls", &BBox::cls);
 }
-
